@@ -24,10 +24,10 @@ class ShortLinks_Plugin implements Typecho_Plugin_Interface
         $db = self::db();
         $tableName = $db->getPrefix() . 'shortlinks';
         $adapter = $db->getAdapterName();
-        
+
         $createTableSuccess = false;
         $errorMsg = '';
-    
+
         try {
             if ("Pdo_SQLite" === $adapter || "SQLite" === $adapter) {
                 $result = $db->query(" CREATE TABLE IF NOT EXISTS " . $tableName . " (
@@ -66,7 +66,7 @@ class ShortLinks_Plugin implements Typecho_Plugin_Interface
             $errorMsg = _t('短链接插件激活失败：创建表 %s 时出错。原因：%s', $tableName, $e->getMessage());
             $createTableSuccess = false;
         }
-    
+
         if ($createTableSuccess) {
             try {
                 $db->fetchRow($db->select()->from($tableName)->limit(1));
@@ -75,7 +75,7 @@ class ShortLinks_Plugin implements Typecho_Plugin_Interface
                 $errorMsg = _t('短链接插件激活失败：表 %s 创建后验证失败。原因：%s', $tableName, $e->getMessage());
             }
         }
-    
+
         if (!$createTableSuccess) {
             if (class_exists('\Typecho\Plugin\Exception')) {
                 throw new \Typecho\Plugin\Exception($errorMsg);
@@ -87,7 +87,7 @@ class ShortLinks_Plugin implements Typecho_Plugin_Interface
         Helper::addAction('shortlinks', 'ShortLinks_Action');
         Helper::addRoute('go', '/go/[key]/', 'ShortLinks_Action', 'shortlink');
         Helper::addPanel(3, 'ShortLinks/panel.php', '短链管理', '短链接管理', 'administrator');
-    
+
         if (class_exists('\Widget\Base\Contents')) {
             Typecho\Plugin::factory('\Widget\Base\Contents')->contentEx = array('ShortLinks_Plugin', 'replace');
             Typecho\Plugin::factory('\Widget\Base\Contents')->excerptEx = array('ShortLinks_Plugin', 'replace');
@@ -103,7 +103,7 @@ class ShortLinks_Plugin implements Typecho_Plugin_Interface
             Typecho_Plugin::factory('Widget_Abstract_Comments')->filter = array('ShortLinks_Plugin', 'authorUrlConvert');
             Typecho_Plugin::factory('Widget_Archive')->singleHandle = array('ShortLinks_Plugin', 'fieldsConvert');
         }
-    
+
         return (_t('数据表 ' . $tableName . ' 创建成功，插件已经成功激活！'));
     }
 
