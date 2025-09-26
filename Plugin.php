@@ -24,41 +24,70 @@ class ShortLinks_Plugin implements Typecho_Plugin_Interface
         $db = self::db();
         $tableName = $db->getPrefix() . 'shortlinks';
         $adapter = $db->getAdapterName();
-        if ("Pdo_SQLite" === $adapter || "SQLite" === $adapter) {
-            $db->query(" CREATE TABLE IF NOT EXISTS " . $tableName . " (
-			   id INTEGER PRIMARY KEY,
-			   key TEXT,
-			   target TEXT,
-			   count NUMERIC)");
-        }
-        if ("Pdo_Mysql" === $adapter || "Mysql" === $adapter) {
-            $dbConfig = null;
-            if (class_exists('\Typecho\Db')) {
-                $dbConfig = $db->getConfig($db::READ);
+        
+        $createTableSuccess = false;
+        $errorMsg = '';
+    
+        try {
+            if ("Pdo_SQLite" === $adapter || "SQLite" === $adapter) {
+                $result = $db->query(" CREATE TABLE IF NOT EXISTS " . $tableName . " (
+                    id INTEGER PRIMARY KEY,
+                    key TEXT,
+                    target TEXT,
+                    count NUMERIC)");
+                $createTableSuccess = (false !== $result);
+            } elseif ("Pdo_Mysql" === $adapter || "Mysql" === $adapter || "Mysqli" === $adapter) {
+                $dbConfig = null;
+                if (class_exists('\Typecho\Db')) {
+                    $dbConfig = $db->getConfig($db::READ);
+                } else {
+                    $dbConfig = $db->getConfig()[0];
+                }
+                $charset = $dbConfig->charset;
+                $result = $db->query("CREATE TABLE IF NOT EXISTS " . $tableName . " (
+                    `id` int(8) NOT NULL AUTO_INCREMENT,
+                    `key` varchar(64) NOT NULL,
+                    `target` varchar(10000) NOT NULL,
+                    `count` int(8) DEFAULT '0',
+                    PRIMARY KEY (`id`)
+                ) DEFAULT CHARSET=$charset AUTO_INCREMENT=1");
+                $createTableSuccess = (false !== $result);
+            } elseif ("Pdo_Pgsql" === $adapter || "Pgsql" === $adapter) {
+                $result = $db->query("CREATE TABLE IF NOT EXISTS " . $tableName . " (
+                    id SERIAL PRIMARY KEY,
+                    key TEXT NOT NULL,
+                    target TEXT NOT NULL,
+                    count INTEGER DEFAULT 0)");
+                $createTableSuccess = (false !== $result);
             } else {
-                $dbConfig = $db->getConfig()[0];
+                throw new \Exception(_t("不支持的数据库适配器 $adapter"));
             }
-            $charset = $dbConfig->charset;
-            $db->query("CREATE TABLE IF NOT EXISTS " . $tableName . " (
-				  `id` int(8) NOT NULL AUTO_INCREMENT,
-				  `key` varchar(64) NOT NULL,
-				  `target` varchar(10000) NOT NULL,
-				  `count` int(8) DEFAULT '0',
-				  PRIMARY KEY (`id`)
-				) DEFAULT CHARSET=$charset AUTO_INCREMENT=1");
+        } catch (\Exception $e) {
+            $errorMsg = _t('短链接插件激活失败：创建表 %s 时出错。原因：%s', $tableName, $e->getMessage());
+            $createTableSuccess = false;
         }
-        if ("Pdo_Pgsql" === $adapter || "Pgsql" === $adapter) {
-            $db->query("CREATE TABLE IF NOT EXISTS " . $tableName . " (
-                id SERIAL PRIMARY KEY,
-                key TEXT NOT NULL,
-                target TEXT NOT NULL,
-                count INTEGER DEFAULT 0)");
+    
+        if ($createTableSuccess) {
+            try {
+                $db->fetchRow($db->select()->from($tableName)->limit(1));
+            } catch (\Exception $e) {
+                $createTableSuccess = false;
+                $errorMsg = _t('短链接插件激活失败：表 %s 创建后验证失败。原因：%s', $tableName, $e->getMessage());
+            }
+        }
+    
+        if (!$createTableSuccess) {
+            if (class_exists('\Typecho\Plugin\Exception')) {
+                throw new \Typecho\Plugin\Exception($errorMsg);
+            } else {
+                throw new Typecho_Plugin_Exception($errorMsg);
+            }
         }
 
         Helper::addAction('shortlinks', 'ShortLinks_Action');
         Helper::addRoute('go', '/go/[key]/', 'ShortLinks_Action', 'shortlink');
         Helper::addPanel(2, 'ShortLinks/panel.php', '短链管理', '短链接管理', 'administrator');
-
+    
         if (class_exists('\Widget\Base\Contents')) {
             Typecho\Plugin::factory('\Widget\Base\Contents')->contentEx = array('ShortLinks_Plugin', 'replace');
             Typecho\Plugin::factory('\Widget\Base\Contents')->excerptEx = array('ShortLinks_Plugin', 'replace');
@@ -74,8 +103,8 @@ class ShortLinks_Plugin implements Typecho_Plugin_Interface
             Typecho_Plugin::factory('Widget_Abstract_Comments')->filter = array('ShortLinks_Plugin', 'authorUrlConvert');
             Typecho_Plugin::factory('Widget_Archive')->singleHandle = array('ShortLinks_Plugin', 'fieldsConvert');
         }
-
-        return ('数据表 ' . $tableName . ' 创建成功，插件已经成功激活！');
+    
+        return (_t('数据表 ' . $tableName . ' 创建成功，插件已经成功激活！'));
     }
 
     /**
@@ -102,14 +131,22 @@ class ShortLinks_Plugin implements Typecho_Plugin_Interface
             if ("Pdo_SQLite" === $adapter || "SQLite" === $adapter) {
                 $dropTableSql = "DROP TABLE '{$db->getPrefix()}shortlinks'";
             }
-            if ("Pdo_Mysql" === $adapter || "Mysql" === $adapter) {
+            if ("Pdo_Mysql" === $adapter || "Mysql" === $adapter || "Mysqli" === $adapter) {
                 $dropTableSql = "DROP TABLE `{$db->getPrefix()}shortlinks`";
             }
             if ("Pdo_Pgsql" === $adapter || "Pgsql" === $adapter) {
                 $dropTableSql = "DROP TABLE \"{$db->getPrefix()}shortlinks\"";
             }
-            $db->query($dropTableSql, Typecho_Db::WRITE);
-            return (_t('短链接插件已被禁用，其表（%s）已被删除！', $db->getPrefix() . 'shortlinks'));
+            try {
+                $db->query($dropTableSql, Typecho_Db::WRITE);
+                return (_t('短链接插件已被禁用，其表（%s）已被删除！', $db->getPrefix() . 'shortlinks'));
+            } catch (Exception $e) {
+                if (class_exists('\Typecho\Plugin\Exception')) {
+                    throw new \Typecho\Plugin\Exception(_t('短链接插件禁用失败，其表（%s）无法删除！原因：%s', $db->getPrefix() . 'shortlinks', $e->getMessage()));
+                } else {
+                    throw new Typecho_Plugin_Exception(_t('短链接插件禁用失败，其表（%s）无法删除！原因：%s', $db->getPrefix() . 'shortlinks', $e->getMessage()));
+                }
+            }
         } else {
             return (_t('短链接插件已被禁用，但是其表（%s）并没有被删除！', $db->getPrefix() . 'shortlinks'));
         }
@@ -164,7 +201,7 @@ class ShortLinks_Plugin implements Typecho_Plugin_Interface
         $form->addInput($radio);
         $refererList = new Typecho_Widget_Helper_Form_Element_Textarea('refererList', null, null, _t('referer 白名单'), _t('在这里设置 referer 白名单，一行一个'));
         $form->addInput($refererList);
-        $nonConvertList = new Typecho_Widget_Helper_Form_Element_Textarea('nonConvertList', null, _t("b0.upaiyun.com" . PHP_EOL . "glb.clouddn.com" . PHP_EOL . "qbox.me" . PHP_EOL . "qnssl.com"), _t('外链转换白名单'), _t('在这里设置外链转换白名单（评论者链接不生效）'));
+        $nonConvertList = new Typecho_Widget_Helper_Form_Element_Textarea('nonConvertList', null, _t("nxvav.cn" . PHP_EOL . "api.nxvav.cn" . PHP_EOL . "nuoxiana.cn"), _t('外链转换白名单'), _t('在这里设置外链转换白名单（评论者链接不生效）'));
         $form->addInput($nonConvertList);
         $isDrop = new Typecho_Widget_Helper_Form_Element_Radio('isDrop', array('0' => '删除', '1' => '不删除'), '1', '彻底卸载(<b style="color:red">请慎重选择</b>)', '请选择是否在禁用插件时，删除数据表');
         $form->addInput($isDrop);
