@@ -4,9 +4,9 @@
  * 把外部链接转换为指定内部链接
  *
  * @package ShortLinks
- * @author Ryan
- * @version 1.2.0
- * @link https://github.com/benzBrake/ShortLinks
+ * @author Ryan,nuoxian
+ * @version 1.2.1
+ * @link https://github.com/nuoxi4n/ShortLinks
  */
 
 class ShortLinks_Plugin implements Typecho_Plugin_Interface
@@ -86,7 +86,7 @@ class ShortLinks_Plugin implements Typecho_Plugin_Interface
 
         Helper::addAction('shortlinks', 'ShortLinks_Action');
         Helper::addRoute('go', '/go/[key]/', 'ShortLinks_Action', 'shortlink');
-        Helper::addPanel(2, 'ShortLinks/panel.php', '短链管理', '短链接管理', 'administrator');
+        Helper::addPanel(3, 'ShortLinks/panel.php', '短链管理', '短链接管理', 'administrator');
     
         if (class_exists('\Widget\Base\Contents')) {
             Typecho\Plugin::factory('\Widget\Base\Contents')->contentEx = array('ShortLinks_Plugin', 'replace');
